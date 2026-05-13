@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎧 Premium Audio Visualizer</title>
+
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        user-select: none;
+    }
+
+    body {
+        background: #000000;
+        overflow: hidden;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    canvas {
+        display: block;
+    }
+
+    /* Кнопка загрузки файла */
+    .upload-btn {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+        z-index: 1000;
+    }
+
+    .upload-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        transform: scale(1.05);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Кнопка перезагрузки */
+    .restart-btn {
+        position: fixed;
+        top: 20px;
+        left: 70px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+        z-index: 1000;
+    }
+
+    .restart-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        transform: scale(1.05);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* SVG иконки */
+    .icon {
+        width: 20px;
+        height: 20px;
+        stroke: white;
+        stroke-width: 1.5;
+        fill: none;
+        opacity: 0.7;
+    }
+
+    .upload-btn:hover .icon,
+    .restart-btn:hover .icon {
+        opacity: 1;
+    }
+
+    /* Ползунок времени */
+    .timeline-container {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 5px 15px;
+        border-radius: 50px;
+        backdrop-filter: blur(5px);
+        z-index: 1000;
+    }
+
+    .timeline-wrapper {
+        width: 200px;
+    }
+
+    .timeline-bg {
+        width: 100%;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 2px;
+        position: relative;
+    }
+
+    .timeline-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #fff, #64c8ff);
+        border-radius: 2px;
+        transition: width 0.05s linear;
+    }
+
+    .timeline-container:hover .timeline-bg {
+        height: 3px;
+    }
+
+    /* Тултип с временем */
+    .time-tooltip {
+        position: fixed;
+        top: 55px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 10px;
+        color: white;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 1000;
+        font-family: monospace;
+        letter-spacing: 0.5px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .timeline-container:hover .time-tooltip {
+        opacity: 1;
+    }
+
+    /* Кнопка звука */
+    .volume-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .volume-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .volume-icon {
+        width: 14px;
+        height: 14px;
+        stroke: white;
+        stroke-width: 1.5;
+        fill: none;
+        opacity: 0.8;
+    }
+
+    /* Ползунок громкости (появляется при наведении) */
+    .volume-slider-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1001;
+    }
+
+    .volume-slider-wrapper {
+        position: absolute;
+        top: 45px;
+        right: 0;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(8px);
+        padding: 12px 8px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s ease;
+    }
+
+    .volume-slider-wrapper.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .volume-slider {
+        width: 100px;
+        height: 3px;
+        -webkit-appearance: none;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 3px;
+        outline: none;
+        cursor: pointer;
+        writing-mode: bt-lr;
+        transform: rotate(-90deg);
+        margin: 40px -30px;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #64c8ff;
+        cursor: pointer;
+        box-shadow: 0 0 8px #64c8ff;
+    }
+
+    .volume-value {
+        text-align: center;
+        margin-top: 5px;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.7);
+        font-family: monospace;
+    }
+
+    /* Скрытый input */
+    #fileInput {
+        display: none;
+    }
+</style>
+</head>
+
+<body>
+
+<!-- Кнопка загрузки -->
+<label class="upload-btn" for="fileInput">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M4 19.5C4 18.7 4.7 18 5.5 18H18.5C19.3 18 20 18.7 20 19.5V20C20 20.6 19.6 21 19 21H5C4.4 21 4 20.6 4 20V19.5Z"/>
+        <path d="M12 3L12 15M12 15L9 12M12 15L15 12"/>
+        <path d="M19 10C19 13.9 15.9 17 12 17C8.1 17 5 13.9 5 10"/>
+    </svg>
+</label>
+<input type="file" id="fileInput" accept="audio/*,video/*">
+
+<!-- Кнопка перезагрузки -->
+<button class="restart-btn" id="restartBtn">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M21 12C21 16.97 16.97 21 12 21C7.03 21 3 16.97 3 12C3 7.03 7.03 3 12 3C14.39 3 16.53 4.04 18 5.66"/>
+        <path d="M21 3L21 7L17 7"/>
+        <path d="M15 9L21 3"/>
+    </svg>
+</button>
+
+<!-- Ползунок времени + кнопка звука -->
+<div class="timeline-container">
+    <div class="timeline-wrapper">
+        <div class="timeline-bg">
+            <div class="timeline-fill" id="timelineFill"></div>
+        </div>
+    </div>
+    <div class="volume-btn" id="volumeBtn">
+        <svg class="volume-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M3 15V9H7L12 4V20L7 15H3Z"/>
+            <path d="M16 9C16 9 18 11 18 12C18 13 16 15 16 15"/>
+            <path d="M19 6C19 6 22 9 22 12C22 15 19 18 19 18"/>
+        </svg>
+    </div>
+</div>
+
+<!-- Ползунок громкости -->
+<div class="volume-slider-container">
+    <div class="volume-slider-wrapper" id="volumeSliderWrapper">
+        <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="80">
+        <div class="volume-value" id="volumeValue">80%</div>
+    </div>
+</div>
+
+<div class="time-tooltip" id="timeTooltip">0:00 / 0:00</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const fileInput = document.getElementById("fileInput");
+const restartBtn = document.getElementById("restartBtn");
+const timelineFill = document.getElementById("timelineFill");
+const timeTooltip = document.getElementById("timeTooltip");
+const volumeBtn = document.getElementById("volumeBtn");
+const volumeSliderWrapper = document.getElementById("volumeSliderWrapper");
+const volumeSlider = document.getElementById("volumeSlider");
+const volumeValue = document.getElementById("volumeValue");
+
+let audioCtx = null;
+let analyser = null;
+let source = null;
+let gainNode = null;
+let audio = null;
+let freqData = null;
+let waveformData = null;
+
+// Эффекты
+let particles = [];
+let globalIntensity = 0;
+
+// Настройки canvas
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+// Форматирование времени
+function formatTime(seconds) {
+    if (!isFinite(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Обновление тултипа
+function updateTimeTooltip() {
+    if (audio && audio.duration) {
+        const current = formatTime(audio.currentTime);
+        const total = formatTime(audio.duration);
+        timeTooltip.textContent = `${current} / ${total}`;
+    }
+}
+
+// Инициализация аудио
+function initAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.3;
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+        waveformData = new Uint8Array(analyser.fftSize);
+    }
+}
+
+// Загрузка аудио
+async function loadAudio(file) {
+    try {
+        if (audio) {
+            audio.pause();
+            audio.src = "";
+        }
+
+        initAudioContext();
+
+        const url = URL.createObjectURL(file);
+        audio = new Audio(url);
+
+        if (source) source.disconnect();
+        source = audioCtx.createMediaElementSource(audio);
+
+        // Узел громкости
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = volumeSlider.value / 100;
+
+        source.connect(gainNode);
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        audio.onloadedmetadata = () => {
+            updateTimeTooltip();
+        };
+
+        audio.ontimeupdate = () => {
+            if (audio.duration) {
+                const percent = (audio.currentTime / audio.duration) * 100;
+                timelineFill.style.width = `${percent}%`;
+                updateTimeTooltip();
+            }
+        };
+
+        audio.play();
+
+    } catch (error) {
+        console.error("Error:", error);
+    }
+}
+
+// Управление громкостью
+volumeSlider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    volumeValue.textContent = val + "%";
+    if (gainNode) {
+        gainNode.gain.value = val / 100;
+    }
+});
+
+// Показ/скрытие ползунка громкости
+volumeBtn.addEventListener("mouseenter", () => {
+    volumeSliderWrapper.classList.add("show");
+});
+
+volumeSliderWrapper.addEventListener("mouseleave", () => {
+    volumeSliderWrapper.classList.remove("show");
+});
+
+restartBtn.onclick = () => {
+    if (audio) {
+        audio.currentTime = 0;
+        audio.play();
+    }
+};
+
+fileInput.onchange = (e) => {
+    if (e.target.files[0]) loadAudio(e.target.files[0]);
+};
+
+// Drag & drop
+document.body.ondragover = (e) => e.preventDefault();
+document.body.ondrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && (file.type.includes("audio") || file.type.includes("video"))) {
+        loadAudio(file);
+    }
+};
+
+// Класс частиц
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4 - 2;
+        this.life = 1;
+        this.size = 2 + Math.random() * 4;
+        this.color = color;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1;
+        this.life -= 0.02;
+        this.size *= 0.98;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// Рисование 4 эпичных линий
+function drawEpicLines() {
+    if (!analyser) return;
+
+    analyser.getByteTimeDomainData(waveformData);
+    analyser.getByteFrequencyData(freqData);
+
+    // Вычисляем громкость
+    let totalSum = 0;
+    for (let i = 0; i < freqData.length; i++) {
+        totalSum += freqData[i];
+    }
+    globalIntensity = totalSum / freqData.length / 255;
+
+    const centerY = canvas.height / 2;
+    const width = canvas.width;
+    const segmentLength = waveformData.length / 4;
+
+    const colors = [
+        { r: 0, g: 200, b: 255, hex: "#00c8ff", name: "cyan" },     // Яркий циан
+        { r: 100, g: 255, b: 100, hex: "#64ff64", name: "green" },   // Яркий зеленый
+        { r: 255, g: 50, b: 150, hex: "#ff3296", name: "pink" },     // Яркий розовый
+        { r: 255, g: 150, b: 50, hex: "#ff9632", name: "orange" }    // Яркий оранжевый
+    ];
+
+    // Создаем частицы при сильном звуке
+    if (globalIntensity > 0.5 && Math.random() < 0.2) {
+        for (let i = 0; i < globalIntensity * 8; i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)].hex;
+            particles.push(new Particle(
+                Math.random() * width,
+                centerY + (Math.random() - 0.5) * 200,
+                color
+            ));
+        }
+    }
+
+    for (let line = 0; line < 4; line++) {
+        const startIdx = Math.floor(line * segmentLength);
+        const endIdx = Math.floor((line + 1) * segmentLength);
+
+        // Громкость линии
+        let sum = 0;
+        for (let i = startIdx; i < endIdx; i++) {
+            const value = (waveformData[i] - 128) / 128;
+            sum += Math.abs(value);
+        }
+        const intensity = Math.min(1.2, sum / (endIdx - startIdx) * 3);
+
+        const alpha = 0.4 + intensity * 0.8;
+        const lineWidth = 1.5 + intensity * 5;
+        const amplitude = 60 + intensity * 200;
+
+        const xStart = (line / 4) * width;
+        const xEnd = ((line + 1) / 4) * width;
+        const step = (xEnd - xStart) / (endIdx - startIdx);
+
+        // Основная линия
+        ctx.beginPath();
+        let firstPoint = true;
+        let points = [];
+
+        for (let i = startIdx; i < endIdx; i++) {
+            const x = xStart + (i - startIdx) * step;
+            const value = (waveformData[i] - 128) / 128;
+            const amplifiedValue = Math.sin(value * Math.PI / 2) * 1.2;
+            const y = centerY + amplifiedValue * amplitude;
+            points.push({ x, y });
+
+            if (firstPoint) {
+                ctx.moveTo(x, y);
+                firstPoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+
+        const color = colors[line];
+        ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+
+        // Свечение
+        ctx.beginPath();
+        firstPoint = true;
+        for (let i = startIdx; i < endIdx; i++) {
+            const x = xStart + (i - startIdx) * step;
+            const value = (waveformData[i] - 128) / 128;
+            const amplifiedValue = Math.sin(value * Math.PI / 2) * 1.2;
+            const y = centerY + amplifiedValue * amplitude;
+
+            if (firstPoint) {
+                ctx.moveTo(x, y);
+                firstPoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.3})`;
+        ctx.lineWidth = lineWidth + 6;
+        ctx.stroke();
+
+        // Заполнение под линией
+        ctx.beginPath();
+        firstPoint = true;
+        for (let i = startIdx; i < endIdx; i++) {
+            const x = xStart + (i - startIdx) * step;
+            const value = (waveformData[i] - 128) / 128;
+            const amplifiedValue = Math.sin(value * Math.PI / 2) * 1.2;
+            const y = centerY + amplifiedValue * amplitude;
+
+            if (firstPoint) {
+                ctx.moveTo(x, y);
+                firstPoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.lineTo(xEnd, centerY);
+        ctx.lineTo(xStart, centerY);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.1})`;
+        ctx.fill();
+    }
+}
+
+// Эффект свечения от центра
+function drawGlowEffect() {
+    if (globalIntensity > 0.3) {
+        const radius = 150 + globalIntensity * 300;
+        const gradient = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, radius
+        );
+        gradient.addColorStop(0, `rgba(100, 200, 255, ${globalIntensity * 0.12})`);
+        gradient.addColorStop(0.5, `rgba(255, 100, 150, ${globalIntensity * 0.06})`);
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+// Парящие частицы фона
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+        if (particles[i].life <= 0 || particles[i].y > canvas.height + 50) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+// Направляющие линии
+function drawGuidelines() {
+    const centerY = canvas.height / 2;
+    const width = canvas.width;
+
+    // Центр
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + globalIntensity * 0.05})`;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // Дополнительные
+    for (let i = -2; i <= 2; i++) {
+        if (i === 0) continue;
+        const y = centerY + i * 40;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.02 + globalIntensity * 0.03})`;
+        ctx.lineWidth = 0.3;
+        ctx.stroke();
+    }
+}
+
+// Анимация
+function animate() {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawGuidelines();
+    drawEpicLines();
+    drawGlowEffect();
+    updateParticles();
+
+    requestAnimationFrame(animate);
+}
+
+// Запуск
+animate();
+
+// Автозапуск контекста
+document.body.addEventListener("click", () => {
+    if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume();
+        if (audio) audio.play();
+    }
+});
+
+console.log("🎧 Premium Audio Visualizer");
+</script>
+</body>
+</html>
