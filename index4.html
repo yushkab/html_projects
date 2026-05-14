@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Визуализатор</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000000;
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            user-select: none;
+            -webkit-user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Панель управления — абсолютно внизу, минималистичная */
+        .controls {
+            position: absolute;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: rgba(10, 10, 12, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 12px 22px;
+            border-radius: 50px;
+            z-index: 20;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+        }
+
+        .btn {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.6rem;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            line-height: 1;
+            position: relative;
+        }
+        .btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+            transform: scale(1.05);
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Кнопки режимов */
+        .mode-btn {
+            opacity: 0.5;
+            filter: grayscale(0.7);
+            transition: all 0.25s;
+        }
+        .mode-btn.active {
+            opacity: 1;
+            filter: grayscale(0);
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 18px currentColor;
+        }
+
+        /* Кнопка play/pause */
+        #playPauseBtn {
+            font-size: 1.8rem;
+            width: 48px;
+            height: 48px;
+        }
+        #playPauseBtn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Громкость */
+        .volume-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: rgba(255, 255, 255, 0.65);
+            font-size: 1.2rem;
+        }
+        .volume-slider {
+            -webkit-appearance: none;
+            width: 80px;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            cursor: pointer;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Загрузка файла */
+        .file-label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.5rem;
+            transition: 0.2s;
+        }
+        .file-label:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        #fileInput {
+            display: none;
+        }
+
+        /* Drag & drop подсказка (без текста, просто свечение) */
+        .drop-hint {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+            border: 2px dashed transparent;
+            transition: border-color 0.2s;
+        }
+        body.dragover .drop-hint {
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        body.dragover canvas {
+            filter: brightness(1.1);
+        }
+
+        /* Убираем все текстовые элементы */
+        .hidden-text {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizerCanvas"></canvas>
+    <div class="drop-hint"></div>
+
+    <div class="controls" id="controlsPanel">
+        <!-- Выбор файла -->
+        <label class="file-label" title="Выбрать аудио">
+            📁
+            <input type="file" id="fileInput" accept="audio/*">
+        </label>
+
+        <!-- Play / Pause -->
+        <button class="btn" id="playPauseBtn" disabled title="Воспроизвести">▶️</button>
+
+        <!-- Громкость -->
+        <div class="volume-wrapper" title="Громкость">
+            <span>🔊</span>
+            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="0.75">
+        </div>
+
+        <!-- Режимы визуализации -->
+        <button class="btn mode-btn active" data-mode="waveform" title="Волна">〰️</button>
+        <button class="btn mode-btn" data-mode="bars" title="Спектр">📊</button>
+        <button class="btn mode-btn" data-mode="circular" title="Круг">⭕</button>
+        <button class="btn mode-btn" data-mode="particles" title="Частицы">✨</button>
+    </div>
+
+    <script>
+        (function() {
+            // ──────────────────────────────────────
+            // DOM
+            // ──────────────────────────────────────
+            const canvas = document.getElementById('visualizerCanvas');
+            const ctx = canvas.getContext('2d');
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const fileInput = document.getElementById('fileInput');
+            const controlsPanel = document.getElementById('controlsPanel');
+            const dropHint = document.querySelector('.drop-hint');
+            const modeButtons = document.querySelectorAll('.mode-btn');
+
+            // ──────────────────────────────────────
+            // Аудио состояние (Web Audio API, без <audio>)
+            // ──────────────────────────────────────
+            let audioContext = null;
+            let analyser = null;
+            let gainNode = null;
+            let audioBuffer = null;
+            let sourceNode = null; // AudioBufferSourceNode
+            let isPlaying = false;
+            let animationId = null;
+            let currentMode = 'waveform';
+            let startTime = 0; // время контекста, когда началось воспроизведение
+            let pauseOffset = 0; // смещение в секундах
+            let audioDuration = 0;
+
+            const FFT_SIZE = 2048;
+            let frequencyData = null;
+            let timeDomainData = null;
+
+            // Частицы
+            let particles = [];
+            const MAX_PARTICLES = 180;
+
+            // ──────────────────────────────────────
+            // Инициализация размера canvas (на весь экран)
+            // ──────────────────────────────────────
+            function resizeCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+                    canvas.width = w * dpr;
+                    canvas.height = h * dpr;
+                    canvas.style.width = w + 'px';
+                    canvas.style.height = h + 'px';
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.scale(dpr, dpr);
+                }
+                return { w, h };
+            }
+
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                if (!isPlaying && !audioBuffer) {
+                    drawIdleState();
+                }
+            });
+
+            // ──────────────────────────────────────
+            // Audio инициализация
+            // ──────────────────────────────────────
+            async function initAudioContext() {
+                if (!audioContext) {
+                    audioContext = new(window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = FFT_SIZE;
+                    analyser.smoothingTimeConstant = 0.8;
+                    frequencyData = new Uint8Array(analyser.frequencyBinCount);
+                    timeDomainData = new Uint8Array(analyser.fftSize);
+
+                    gainNode = audioContext.createGain();
+                    gainNode.gain.value = parseFloat(volumeSlider.value);
+                    gainNode.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                }
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+            }
+
+            // ──────────────────────────────────────
+            // Остановка текущего воспроизведения
+            // ──────────────────────────────────────
+            function stopSource() {
+                if (sourceNode) {
+                    try {
+                        sourceNode.stop();
+                        sourceNode.disconnect();
+                    } catch (e) { /* игнорируем */ }
+                    sourceNode = null;
+                }
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                }
+                isPlaying = false;
+                playPauseBtn.textContent = '▶️';
+                playPauseBtn.title = 'Воспроизвести';
+                pauseOffset = 0;
+            }
+
+            // ──────────────────────────────────────
+            // Загрузка файла и декодирование
+            // ──────────────────────────────────────
+            async function loadAudioFile(file) {
+                await initAudioContext();
+
+                // Полностью останавливаем текущее
+                stopSource();
+                audioBuffer = null;
+                audioDuration = 0;
+                playPauseBtn.disabled = true;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    audioDuration = audioBuffer.duration;
+
+                    playPauseBtn.disabled = false;
+                    pauseOffset = 0;
+                    // Небольшая задержка для UI
+                    drawIdleState();
+                } catch (err) {
+                    console.error('Ошибка декодирования:', err);
+                    // Визуально показываем ошибку (без текста, просто моргнём канвас)
+                    canvas.style.opacity = '0.5';
+                    setTimeout(() => { canvas.style.opacity = '1'; }, 150);
+                    playPauseBtn.disabled = true;
+                }
+            }
+
+            // ──────────────────────────────────────
+            // Воспроизведение из буфера
+            // ──────────────────────────────────────
+            function play() {
+                if (!audioBuffer || !audioContext) return;
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+
+                stopSource(); // на всякий случай
+
+                sourceNode = audioContext.createBufferSource();
+                sourceNode.buffer = audioBuffer;
+                sourceNode.connect(gainNode);
+
+                sourceNode.start(0, pauseOffset);
+                startTime = audioContext.currentTime - pauseOffset;
+                isPlaying = true;
+                playPauseBtn.textContent = '⏸️';
+                playPauseBtn.title = 'Пауза';
+
+                sourceNode.onended = () => {
+                    if (isPlaying && sourceNode) {
+                        // Достигнут конец файла
+                        isPlaying = false;
+                        pauseOffset = 0;
+                        playPauseBtn.textContent = '▶️';
+                        playPauseBtn.title = 'Воспроизвести';
+                        sourceNode.disconnect();
+                        sourceNode = null;
+                        if (animationId) {
+                            cancelAnimationFrame(animationId);
+                            animationId = null;
+                        }
+                        drawIdleState();
+                    }
+                };
+
+                animate();
+            }
+
+            function pause() {
+                if (!isPlaying || !sourceNode || !audioContext) return;
+                pauseOffset = audioContext.currentTime - startTime;
+                stopSource();
+                isPlaying = false;
+                playPauseBtn.textContent = '▶️';
+                playPauseBtn.title = 'Воспроизвести';
+                drawFrame(); // зафиксировать последний кадр
+            }
+
+            function stopPlayback() {
+                stopSource();
+                audioBuffer = null;
+                audioDuration = 0;
+                playPauseBtn.disabled = true;
+                pauseOffset = 0;
+                playPauseBtn.textContent = '▶️';
+                playPauseBtn.title = 'Воспроизвести';
+                particles = [];
+                drawIdleState();
+            }
+
+            // ──────────────────────────────────────
+            // Анимация
+            // ──────────────────────────────────────
+            function animate() {
+                if (!isPlaying) return;
+                animationId = requestAnimationFrame(animate);
+                drawFrame();
+            }
+
+            function drawFrame() {
+                const { w, h } = resizeCanvas();
+                if (!analyser) {
+                    drawIdleState();
+                    return;
+                }
+
+                analyser.getByteFrequencyData(frequencyData);
+                analyser.getByteTimeDomainData(timeDomainData);
+
+                ctx.clearRect(0, 0, w, h);
+
+                switch (currentMode) {
+                    case 'waveform': drawWaveform(w, h); break;
+                    case 'bars': drawBars(w, h); break;
+                    case 'circular': drawCircular(w, h); break;
+                    case 'particles': drawParticles(w, h); break;
+                    default: drawWaveform(w, h);
+                }
+            }
+
+            function drawIdleState() {
+                const { w, h } = resizeCanvas();
+                ctx.clearRect(0, 0, w, h);
+                // Тонкая едва заметная линия по центру
+                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, h / 2);
+                ctx.lineTo(w, h / 2);
+                ctx.stroke();
+                // Маленькая точка в центре
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.beginPath();
+                ctx.arc(w / 2, h / 2, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // ──────────────────────────────────────
+            // Режимы отрисовки (адаптированы под чёрный фон)
+            // ──────────────────────────────────────
+            function drawWaveform(w, h) {
+                const data = timeDomainData;
+                const sliceWidth = w / data.length;
+                const centerY = h / 2;
+
+                const gradient = ctx.createLinearGradient(0, centerY - 80, 0, centerY + 80);
+                gradient.addColorStop(0, 'rgba(180, 130, 255, 0.9)');
+                gradient.addColorStop(0.5, 'rgba(200, 160, 255, 1)');
+                gradient.addColorStop(1, 'rgba(100, 180, 255, 0.9)');
+
+                ctx.lineWidth = 2.2;
+                ctx.strokeStyle = gradient;
+                ctx.shadowColor = 'rgba(150, 120, 255, 0.6)';
+                ctx.shadowBlur = 24;
+                ctx.beginPath();
+                for (let i = 0; i < data.length; i++) {
+                    const v = data[i] / 128.0 - 1.0;
+                    const y = centerY + v * (h * 0.45);
+                    const x = i * sliceWidth;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            function drawBars(w, h) {
+                const data = frequencyData;
+                const barCount = Math.min(128, data.length);
+                const barWidth = (w / barCount) * 0.8;
+                const gap = (w / barCount) * 0.2;
+                const maxBarHeight = h * 0.9;
+
+                for (let i = 0; i < barCount; i++) {
+                    const value = data[i];
+                    const percent = value / 255;
+                    const barHeight = percent * maxBarHeight;
+                    const x = i * (barWidth + gap);
+                    const y = h - barHeight;
+
+                    const hue = 250 + (i / barCount) * 90;
+                    const lightness = 55 + percent * 35;
+                    ctx.fillStyle = `hsla(${hue}, 85%, ${lightness}%, 0.9)`;
+                    ctx.shadowColor = `hsla(${hue}, 85%, 65%, 0.7)`;
+                    ctx.shadowBlur = barHeight * 0.25 + 4;
+                    ctx.fillRect(x, y, barWidth, barHeight);
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            function drawCircular(w, h) {
+                const data = frequencyData;
+                const centerX = w / 2;
+                const centerY = h / 2;
+                const radius = Math.min(w, h) * 0.38;
+                const barCount = 180;
+                const step = data.length / barCount;
+                const angleStep = (Math.PI * 2) / barCount;
+
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius * 0.55, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.9)';
+                ctx.fill();
+
+                for (let i = 0; i < barCount; i++) {
+                    const dataIndex = Math.floor(i * step);
+                    const value = data[Math.min(dataIndex, data.length - 1)];
+                    const percent = value / 255;
+                    const barHeight = radius * 0.5 * percent + 2;
+                    const angle = i * angleStep - Math.PI / 2;
+                    const innerR = radius * 0.56;
+                    const outerR = innerR + barHeight;
+                    const x1 = centerX + Math.cos(angle) * innerR;
+                    const y1 = centerY + Math.sin(angle) * innerR;
+                    const x2 = centerX + Math.cos(angle) * outerR;
+                    const y2 = centerY + Math.sin(angle) * outerR;
+
+                    const hue = 40 + (i / barCount) * 40;
+                    ctx.strokeStyle = `hsla(${hue}, 95%, 60%, ${0.5 + percent * 0.5})`;
+                    ctx.lineWidth = 2.2;
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = `hsla(${hue}, 95%, 65%, 0.8)`;
+                    ctx.shadowBlur = 5 + percent * 10;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            function drawParticles(w, h) {
+                const data = frequencyData;
+                const centerX = w / 2;
+                const centerY = h / 2;
+
+                let sum = 0;
+                const sampleCount = Math.min(60, data.length);
+                for (let i = 0; i < sampleCount; i++) sum += data[i];
+                const avgEnergy = sum / sampleCount / 255;
+                const bassEnergy = data[0] / 255;
+
+                const spawnRate = Math.floor(2 + avgEnergy * 14);
+                for (let i = 0; i < spawnRate; i++) {
+                    if (particles.length < MAX_PARTICLES) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 0.3 + Math.random() * 3 + bassEnergy * 5;
+                        const size = 1.2 + Math.random() * 5 + bassEnergy * 7;
+                        particles.push({
+                            x: centerX + (Math.random() - 0.5) * 25,
+                            y: centerY + (Math.random() - 0.5) * 25,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            life: 1,
+                            decay: 0.006 + Math.random() * 0.028,
+                            size,
+                            hue: Math.random() < 0.6 ? 0 + Math.random() * 20 : 330 + Math.random() * 30,
+                            saturation: 85 + Math.random() * 15,
+                            lightness: 55 + Math.random() * 40,
+                        });
+                    }
+                }
+
+                ctx.globalCompositeOperation = 'lighter';
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= p.decay;
+                    const pulseSize = p.size * (1 + bassEnergy * 2.8);
+                    if (p.life <= 0 || p.x < -50 || p.x > w + 50 || p.y < -50 || p.y > h + 50) {
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    ctx.fillStyle = `hsla(${p.hue}, ${p.saturation}%, ${p.lightness}%, ${p.life * 0.9})`;
+                    ctx.shadowColor = `hsla(${p.hue}, 90%, 60%, ${p.life * 0.7})`;
+                    ctx.shadowBlur = pulseSize * 3.5;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+                ctx.globalCompositeOperation = 'source-over';
+
+                const coreGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 30 + bassEnergy * 45);
+                coreGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+                coreGrad.addColorStop(0.4, `rgba(255,100,100,${0.5 + bassEnergy * 0.5})`);
+                coreGrad.addColorStop(1, 'rgba(255,50,50,0)');
+                ctx.fillStyle = coreGrad;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 30 + bassEnergy * 45, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // ──────────────────────────────────────
+            // Переключение режимов
+            // ──────────────────────────────────────
+            function setMode(mode) {
+                currentMode = mode;
+                particles = [];
+                modeButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === mode);
+                });
+                if (!isPlaying) drawIdleState();
+            }
+
+            modeButtons.forEach(btn => {
+                btn.addEventListener('click', () => setMode(btn.dataset.mode));
+            });
+
+            // ──────────────────────────────────────
+            // Управление play/pause
+            // ──────────────────────────────────────
+            playPauseBtn.addEventListener('click', async () => {
+                if (!audioBuffer) return;
+                await initAudioContext();
+                if (isPlaying) {
+                    pause();
+                } else {
+                    play();
+                }
+            });
+
+            // ──────────────────────────────────────
+            // Громкость
+            // ──────────────────────────────────────
+            volumeSlider.addEventListener('input', () => {
+                const val = parseFloat(volumeSlider.value);
+                if (gainNode) gainNode.gain.value = val;
+            });
+
+            // ──────────────────────────────────────
+            // Выбор файла через input
+            // ──────────────────────────────────────
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                await loadAudioFile(file);
+                fileInput.value = ''; // позволяет выбрать тот же файл повторно
+            });
+
+            // ──────────────────────────────────────
+            // Drag & Drop на всё окно
+            // ──────────────────────────────────────
+            const body = document.body;
+
+            body.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                body.classList.add('dragover');
+            });
+            body.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (e.target === body || e.target === dropHint) {
+                    body.classList.remove('dragover');
+                }
+            });
+            body.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                body.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (!file || !file.type.startsWith('audio/')) return;
+                await loadAudioFile(file);
+            });
+
+            // ──────────────────────────────────────
+            // Клавиша пробел
+            // ──────────────────────────────────────
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && e.target === body && audioBuffer) {
+                    e.preventDefault();
+                    if (isPlaying) pause();
+                    else play();
+                }
+            });
+
+            // ──────────────────────────────────────
+            // Старт
+            // ──────────────────────────────────────
+            resizeCanvas();
+            drawIdleState();
+        })();
+    </script>
+</body>
+</html>
